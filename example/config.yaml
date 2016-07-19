@@ -1,0 +1,9 @@
+storage:
+  type: memory
+connectors:
+  - type: ldap
+    id: libcore 
+web:
+  http: localhost:5556
+api:
+  listen: localhost:5554
