@@ -2,6 +2,7 @@
 package ldap
 
 import (
+	"errors"
 	"fmt"
 
 	"gopkg.in/ldap.v2"
@@ -10,50 +11,30 @@ import (
 	"github.com/ericchiang/poke/storage"
 )
 
-var knownFields = map[string]bool{
-	"host":        true,
-	"bind_dn":     true,
-	"username":    true,
-	"password":    true,
-	"group_query": true,
+// Config holds the configuration parameters for the LDAP connector.
+type Config struct {
+	Host   string `yaml:"host"`
+	BindDN string `yaml:"bindDN"`
 }
 
-func init() {
-	connector.Register("ldap", new(factory))
-}
-
-type factory struct{}
-
-func (d *factory) New(config map[string]string) (connector.Connector, error) {
-	for field := range config {
-		if !knownFields[field] {
-			return nil, fmt.Errorf("ldap: unrecognized field %q", field)
-		}
+// Open returns an authentication strategy using LDAP.
+func (c *Config) Open() (connector.Connector, error) {
+	if c.Host == "" {
+		return nil, errors.New("missing host parameter")
 	}
-	return &ldapConnector{
-		host:       config["host"],
-		bindDN:     config["bind_dn"],
-		username:   config["username"],
-		password:   config["password"],
-		groupQuery: config["group_query"],
-	}, nil
+	if c.BindDN == "" {
+		return nil, errors.New("missing bindDN paramater")
+	}
+	return &ldapConnector{*c}, nil
 }
 
 type ldapConnector struct {
-	host   string
-	bindDN string
-
-	username string
-	password string
-
-	groupQuery string
-
-	// TODO(ericchiang): TLS Config
+	Config
 }
 
 func (c *ldapConnector) do(f func(c *ldap.Conn) error) error {
 	// TODO(ericchiang): Connection pooling.
-	conn, err := ldap.Dial("tcp", c.host)
+	conn, err := ldap.Dial("tcp", c.Host)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %v", err)
 	}
@@ -64,7 +45,7 @@ func (c *ldapConnector) do(f func(c *ldap.Conn) error) error {
 
 func (c *ldapConnector) Login(username, password string) (storage.Identity, error) {
 	err := c.do(func(conn *ldap.Conn) error {
-		return conn.Bind(fmt.Sprintf("uid=%s,%s", username, c.bindDN), password)
+		return conn.Bind(fmt.Sprintf("uid=%s,%s", username, c.BindDN), password)
 	})
 	if err != nil {
 		return storage.Identity{}, err

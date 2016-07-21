@@ -1,8 +1,7 @@
-// Package connectortest implements a mock connector which requires no user interaction.
-package connectortest
+// Package mock implements a mock connector which requires no user interaction.
+package mock
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -17,33 +16,19 @@ func New() connector.Connector {
 	return mockConnector{}
 }
 
-func init() {
-	connector.Register("mock", new(factory))
-}
-
-type factory struct{}
-
-func (f *factory) New(config map[string]string) (connector.Connector, error) {
-	if len(config) != 0 {
-		return nil, errors.New("connectortest: mock connector does not take any config")
-	}
-	return New(), nil
-}
-
 type mockConnector struct{}
 
 func (m mockConnector) Close() error { return nil }
 
-func (m mockConnector) HandleLogin(w http.ResponseWriter, r *http.Request, callbackURL, state string) {
+func (m mockConnector) LoginURL(callbackURL, state string) (string, error) {
 	u, err := url.Parse(callbackURL)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse callbackURL %q: %v", callbackURL, err), http.StatusBadRequest)
-		return
+		return "", fmt.Errorf("failed to parse callbackURL %q: %v", callbackURL, err)
 	}
 	v := u.Query()
 	v.Set("state", state)
 	u.RawQuery = v.Encode()
-	http.Redirect(w, r, u.String(), http.StatusFound)
+	return u.String(), nil
 }
 
 func (m mockConnector) HandleCallback(r *http.Request) (storage.Identity, string, error) {
@@ -56,4 +41,12 @@ func (m mockConnector) HandleCallback(r *http.Request) (storage.Identity, string
 
 func (m mockConnector) Groups(identity storage.Identity) ([]string, error) {
 	return []string{"authors"}, nil
+}
+
+// Config holds the configuration parameters for the mock connector.
+type Config struct{}
+
+// Open returns an authentication strategy which requires no user interaction.
+func (c *Config) Open() (connector.Connector, error) {
+	return New(), nil
 }

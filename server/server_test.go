@@ -13,7 +13,7 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 
-	"github.com/ericchiang/poke/connector/connectortest"
+	"github.com/ericchiang/poke/connector/mock"
 	"github.com/ericchiang/poke/storage"
 	"github.com/ericchiang/poke/storage/memory"
 )
@@ -70,7 +70,7 @@ func newTestServer() (*httptest.Server, *Server) {
 			{
 				ID:          "mock",
 				DisplayName: "Mock",
-				Connector:   connectortest.New(),
+				Connector:   mock.New(),
 			},
 		},
 	}

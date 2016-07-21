@@ -34,7 +34,7 @@ func renderLoginOptions(w http.ResponseWriter, connectors []connectorInfo, query
 
 var passwordTmpl = template.Must(template.New("password-template").Parse(`<html>
 <body>
-<p>Login through LDAP</p>
+<p>Login</p>
 <form action="{{ .Callback }}" method="POST">
 Login: <input type="text" name="login"/><br/>
 Password: <input type="password" name="password"/><br/>

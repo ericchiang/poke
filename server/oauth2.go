@@ -13,9 +13,26 @@ import (
 )
 
 type oauth2Error struct {
-	RedirectURI string `json:"-"`
-	Type        string `json:"error"`
-	Description string `json:"error_description"`
+	State       string
+	RedirectURI string
+	Type        string
+	Description string
+}
+
+func (err *oauth2Error) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	v := url.Values{}
+	v.Add("state", err.State)
+	v.Add("error", err.Type)
+	if err.Description != "" {
+		v.Add("error_description", err.Description)
+	}
+	var redirectURI string
+	if strings.Contains(err.RedirectURI, "?") {
+		redirectURI = err.RedirectURI + "&" + v.Encode()
+	} else {
+		redirectURI = err.RedirectURI + "?" + v.Encode()
+	}
+	http.Redirect(w, r, redirectURI, http.StatusSeeOther)
 }
 
 const (
@@ -138,13 +155,14 @@ func (s *Server) newIDToken(clientID string, claims storage.Identity, scopes []s
 // For correctness the logic is largely copied from https://github.com/RangelReale/osin.
 func parseAuthorizationRequest(s storage.Storage, r *http.Request) (req storage.AuthRequest, oauth2Err *oauth2Error) {
 	if err := r.ParseForm(); err != nil {
-		return req, &oauth2Error{"", errInvalidRequest, "Failed to parse request."}
+		return req, &oauth2Error{"", "", errInvalidRequest, "Failed to parse request."}
 	}
 
 	redirectURI, err := url.QueryUnescape(r.Form.Get("redirect_uri"))
 	if err != nil {
-		return req, &oauth2Error{"", errInvalidRequest, "No redirect_uri provided."}
+		return req, &oauth2Error{"", "", errInvalidRequest, "No redirect_uri provided."}
 	}
+	state := r.FormValue("state")
 
 	clientID := r.Form.Get("client_id")
 
@@ -152,19 +170,19 @@ func parseAuthorizationRequest(s storage.Storage, r *http.Request) (req storage.
 	if err != nil {
 		if err == storage.ErrNotFound {
 			description := fmt.Sprintf("Invalid client_id (%q).", clientID)
-			return req, &oauth2Error{"", errUnauthorizedClient, description}
+			return req, &oauth2Error{"", "", errUnauthorizedClient, description}
 		}
 		log.Printf("Failed to get client: %v", err)
-		return req, &oauth2Error{"", errServerError, ""}
+		return req, &oauth2Error{"", "", errServerError, ""}
 	}
 
 	if !validateRedirectURI(client, redirectURI) {
 		description := fmt.Sprintf("Unregistered redirect_uri (%q).", redirectURI)
-		return req, &oauth2Error{"", errInvalidRequest, description}
+		return req, &oauth2Error{"", "", errInvalidRequest, description}
 	}
 
 	newErr := func(typ, format string, a ...interface{}) *oauth2Error {
-		return &oauth2Error{redirectURI, typ, fmt.Sprintf(format, a...)}
+		return &oauth2Error{state, redirectURI, typ, fmt.Sprintf(format, a...)}
 	}
 
 	scopes := strings.Split(r.Form.Get("scope"), " ")
@@ -188,7 +206,7 @@ func parseAuthorizationRequest(s storage.Storage, r *http.Request) (req storage.
 
 			isTrusted, err := validateCrossClientTrust(s, clientID, peerID)
 			if err != nil {
-				return req, &oauth2Error{"", errServerError, ""}
+				return req, newErr(errServerError, "")
 			}
 			if !isTrusted {
 				invalidScopes = append(invalidScopes, scope)
@@ -280,51 +298,7 @@ type tokenRequest struct {
 }
 
 func handleTokenRequest(s storage.Storage, w http.ResponseWriter, r *http.Request) *oauth2Error {
-	if r.Method != "POST" {
-		return &oauth2Error{"", errInvalidRequest, "Token request must use POST"}
-	}
-	if err := r.ParseForm(); err != nil {
-		return &oauth2Error{"", errInvalidRequest, "Failed to parse body"}
-	}
-
-	clientID, clientSecret, ok := r.BasicAuth()
-	if ok {
-		var err error
-		if clientID, err = url.QueryUnescape(clientID); err != nil {
-			return &oauth2Error{"", errInvalidRequest, "Invalid client_id encoding"}
-		}
-		if clientSecret, err = url.QueryUnescape(clientSecret); err != nil {
-			return &oauth2Error{"", errInvalidRequest, "Invalid client_secret encoding"}
-		}
-	} else {
-		clientID = r.PostFormValue("client_id")
-		clientSecret = r.PostFormValue("client_secret")
-		if clientID == "" || clientSecret == "" {
-			return &oauth2Error{"", errInvalidRequest, "Client auth not set"}
-		}
-	}
-
-	client, err := s.GetClient(clientID)
-	if err != nil {
-		if err == storage.ErrNotFound {
-			return &oauth2Error{"", errInvalidClient, "Unknown client_id"}
-		}
-		log.Printf("Failed to get client %q: %v", clientID, err)
-		return &oauth2Error{"", errServerError, ""}
-	}
-	if client.Secret != clientSecret {
-		return &oauth2Error{"", errInvalidClient, "Wrong client_secret"}
-	}
-
-	grantType := r.PostFormValue("grant_type")
-	switch grantType {
-	case grantTypeAuthorizationCode:
-		return handleRefreshRequest(s, w, r, client)
-	case grantTypeRefreshToken:
-		return handleCodeRequest(s, w, r, client)
-	default:
-		return &oauth2Error{"", errUnsupportedGrantType, fmt.Sprintf("Unknown grant type '%s'", grantType)}
-	}
+	return nil
 }
 
 func handleRefreshRequest(s storage.Storage, w http.ResponseWriter, r *http.Request, client storage.Client) *oauth2Error {

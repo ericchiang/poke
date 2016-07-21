@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gorilla/mux"
+	jose "gopkg.in/square/go-jose.v2"
+
 	"github.com/ericchiang/poke/connector"
 	"github.com/ericchiang/poke/storage"
-	"github.com/gorilla/mux"
-
-	jose "gopkg.in/square/go-jose.v2"
 )
 
 func (s *Server) handlePublicKeys(w http.ResponseWriter, r *http.Request) {
@@ -100,9 +100,21 @@ func (s *Server) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 
 // handleAuthorization handles the OAuth2 auth endpoint.
 func (s *Server) handleAuthorization(w http.ResponseWriter, r *http.Request) {
+	authReq, err := parseAuthorizationRequest(s.storage, r)
+	if err != nil {
+		s.renderError(w, http.StatusInternalServerError, err.Type, err.Description)
+		return
+	}
+	if err := s.storage.CreateAuthRequest(authReq); err != nil {
+		log.Printf("Failed to create authorization request: %v", err)
+		s.renderError(w, http.StatusInternalServerError, errServerError, "")
+		return
+	}
+	state := authReq.ID
+
 	if len(s.connectors) == 1 {
 		for id := range s.connectors {
-			http.Redirect(w, r, s.absPath("/auth", id)+"?"+r.URL.RawQuery, http.StatusFound)
+			http.Redirect(w, r, s.absPath("/auth", id)+"?state="+state, http.StatusFound)
 			return
 		}
 	}
@@ -112,7 +124,7 @@ func (s *Server) handleAuthorization(w http.ResponseWriter, r *http.Request) {
 	for id := range s.connectors {
 		connectorInfos[i] = connectorInfo{
 			DisplayName: id,
-			URL:         s.absPath("/auth", id) + "?" + r.URL.RawQuery,
+			URL:         s.absPath("/auth", id) + "?state=" + state,
 		}
 		i++
 	}
@@ -130,25 +142,22 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 
 	// TODO(ericchiang): cache user identity.
 
+	state := r.FormValue("state")
+
 	switch r.Method {
 	case "GET":
-		// TODO(ericchiang): move this to the handleLogin method.
-		authReq, err := parseAuthorizationRequest(s.storage, r)
-		if err != nil {
-			s.renderError(w, http.StatusInternalServerError, err.Type, err.Description)
-			return
-		}
-		if err := s.storage.CreateAuthRequest(authReq); err != nil {
-			log.Printf("Failed to create authorization request: %v", err)
-			s.renderError(w, http.StatusInternalServerError, errServerError, "")
-			return
-		}
 
 		switch conn := conn.Connector.(type) {
 		case connector.CallbackConnector:
-			conn.HandleLogin(w, r, s.absURL("/callback", connID), authReq.ID)
+			callbackURL, err := conn.LoginURL(s.absURL("/callback", connID), state)
+			if err != nil {
+				log.Printf("Connector %q returned error when creating callback: %v", connID, err)
+				s.renderError(w, http.StatusInternalServerError, errServerError, "")
+				return
+			}
+			http.Redirect(w, r, callbackURL, http.StatusFound)
 		case connector.PasswordConnector:
-			renderPasswordTmpl(w, authReq.ID, r.URL.String(), "")
+			renderPasswordTmpl(w, state, r.URL.String(), "")
 		default:
 			s.notFound(w, r)
 		}
@@ -159,7 +168,6 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		state := r.FormValue("state")
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 
