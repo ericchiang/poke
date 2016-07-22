@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"testing"
+	"time"
 
 	"github.com/ericchiang/oidc"
 	"golang.org/x/net/context"
@@ -112,8 +113,7 @@ func TestDiscovery(t *testing.T) {
 	}
 }
 
-// TestOAuth2Code setups a test oauth2 server and attempts to retrieve a "code".
-func TestOAuth2Code(t *testing.T) {
+func TestOAuth2Flow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -150,8 +150,34 @@ func TestOAuth2Code(t *testing.T) {
 				return
 			}
 
-			if q.Get("code") != "" {
+			if code := q.Get("code"); code != "" {
 				gotCode = true
+				token, err := oauth2Config.Exchange(ctx, code)
+				if err != nil {
+					t.Errorf("failed to exchange code for token: %v", err)
+					return
+				}
+				idToken, ok := token.Extra("id_token").(string)
+				if !ok {
+					t.Errorf("no id token found: %v", err)
+					return
+				}
+				// TODO(ericchiang): validate id token
+				_ = idToken
+
+				token.Expiry = time.Now().Add(time.Second * -10)
+				if token.Valid() {
+					t.Errorf("token shouldn't be valid")
+				}
+
+				newToken, err := oauth2Config.TokenSource(ctx, token).Token()
+				if err != nil {
+					t.Errorf("failed to refresh token: %v", err)
+					return
+				}
+				if token.RefreshToken == newToken.RefreshToken {
+					t.Errorf("old refresh token was the same as the new token %q", token.RefreshToken)
+				}
 			}
 			if gotState := q.Get("state"); gotState != state {
 				t.Errorf("state did not match, want=%q got=%q", state, gotState)
@@ -178,7 +204,7 @@ func TestOAuth2Code(t *testing.T) {
 		ClientID:     client.ID,
 		ClientSecret: client.Secret,
 		Endpoint:     p.Endpoint(),
-		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "offline_access"},
 		RedirectURL:  redirectURL,
 	}
 

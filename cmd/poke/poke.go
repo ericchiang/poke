@@ -9,6 +9,9 @@ import (
 )
 
 type config struct {
+	Web struct {
+		Issuer string `yaml:"issuer"`
+	} `yaml:"web"`
 	Connectors []connectorConfig `yaml:"connectors"`
 }
 

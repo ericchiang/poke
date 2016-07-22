@@ -33,6 +33,7 @@ func (m mockConnector) LoginURL(callbackURL, state string) (string, error) {
 
 func (m mockConnector) HandleCallback(r *http.Request) (storage.Identity, string, error) {
 	return storage.Identity{
+		UserID:        "0-385-28089-0",
 		Username:      "Kilgore Trout",
 		Email:         "kilgore@kilgore.trout",
 		EmailVerified: true,

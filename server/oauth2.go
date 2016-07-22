@@ -8,18 +8,23 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ericchiang/poke/storage"
 )
 
-type oauth2Error struct {
+// TODO(ericchiang): clean this file up and figure out more idiomatic error handling.
+
+// authErr is an error response to an authorization request.
+// See: https://tools.ietf.org/html/rfc6749#section-4.1.2.1
+type authErr struct {
 	State       string
 	RedirectURI string
 	Type        string
 	Description string
 }
 
-func (err *oauth2Error) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (err *authErr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	v := url.Values{}
 	v.Add("state", err.State)
 	v.Add("error", err.Type)
@@ -33,6 +38,21 @@ func (err *oauth2Error) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		redirectURI = err.RedirectURI + "?" + v.Encode()
 	}
 	http.Redirect(w, r, redirectURI, http.StatusSeeOther)
+}
+
+func tokenErr(w http.ResponseWriter, typ, description string, statusCode int) {
+	data := struct {
+		Error       string `json:"error"`
+		Description string `json:"error_description,omitempty"`
+	}{typ, description}
+	body, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("failed to marshal token error response: %v", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.Write(body)
 }
 
 const (
@@ -100,11 +120,16 @@ type idTokenClaims struct {
 	Name string `json:"name,omitempty"`
 }
 
-func (s *Server) newIDToken(clientID string, claims storage.Identity, scopes []string, nonce string) (string, error) {
+func (s *Server) newIDToken(clientID string, claims storage.Identity, scopes []string, nonce string) (idToken string, expiry time.Time, err error) {
+	issuedAt := s.now()
+	expiry = issuedAt.Add(s.idTokensValidFor)
+
 	tok := idTokenClaims{
-		Issuer:  s.issuerURL.String(),
-		Subject: claims.UserID,
-		Nonce:   nonce,
+		Issuer:   s.issuerURL.String(),
+		Subject:  claims.UserID,
+		Nonce:    nonce,
+		Expiry:   expiry.Unix(),
+		IssuedAt: issuedAt.Unix(),
 	}
 
 	for _, scope := range scopes {
@@ -123,10 +148,11 @@ func (s *Server) newIDToken(clientID string, claims storage.Identity, scopes []s
 			}
 			isTrusted, err := validateCrossClientTrust(s.storage, clientID, peerID)
 			if err != nil {
-				return "", err
+				return "", expiry, err
 			}
 			if !isTrusted {
-				return "", fmt.Errorf("peer (%s) does not trust client", peerID)
+				// TODO(ericchiang): propagate this error to the client.
+				return "", expiry, fmt.Errorf("peer (%s) does not trust client", peerID)
 			}
 			tok.Audience = append(tok.Audience, peerID)
 		}
@@ -139,28 +165,31 @@ func (s *Server) newIDToken(clientID string, claims storage.Identity, scopes []s
 
 	payload, err := json.Marshal(tok)
 	if err != nil {
-		return "", fmt.Errorf("could not serialize claims: %v", err)
+		return "", expiry, fmt.Errorf("could not serialize claims: %v", err)
 	}
 
 	keys, err := s.storage.GetKeys()
 	if err != nil {
 		log.Printf("Failed to get keys: %v", err)
-		return "", err
+		return "", expiry, err
 	}
-	return keys.Sign(payload)
+	if idToken, err = keys.Sign(payload); err != nil {
+		return "", expiry, fmt.Errorf("failed to sign payload: %v", err)
+	}
+	return idToken, expiry, nil
 }
 
 // parse the initial request from the OAuth2 client.
 //
 // For correctness the logic is largely copied from https://github.com/RangelReale/osin.
-func parseAuthorizationRequest(s storage.Storage, r *http.Request) (req storage.AuthRequest, oauth2Err *oauth2Error) {
+func parseAuthorizationRequest(s storage.Storage, r *http.Request) (req storage.AuthRequest, oauth2Err *authErr) {
 	if err := r.ParseForm(); err != nil {
-		return req, &oauth2Error{"", "", errInvalidRequest, "Failed to parse request."}
+		return req, &authErr{"", "", errInvalidRequest, "Failed to parse request."}
 	}
 
 	redirectURI, err := url.QueryUnescape(r.Form.Get("redirect_uri"))
 	if err != nil {
-		return req, &oauth2Error{"", "", errInvalidRequest, "No redirect_uri provided."}
+		return req, &authErr{"", "", errInvalidRequest, "No redirect_uri provided."}
 	}
 	state := r.FormValue("state")
 
@@ -170,19 +199,19 @@ func parseAuthorizationRequest(s storage.Storage, r *http.Request) (req storage.
 	if err != nil {
 		if err == storage.ErrNotFound {
 			description := fmt.Sprintf("Invalid client_id (%q).", clientID)
-			return req, &oauth2Error{"", "", errUnauthorizedClient, description}
+			return req, &authErr{"", "", errUnauthorizedClient, description}
 		}
 		log.Printf("Failed to get client: %v", err)
-		return req, &oauth2Error{"", "", errServerError, ""}
+		return req, &authErr{"", "", errServerError, ""}
 	}
 
 	if !validateRedirectURI(client, redirectURI) {
 		description := fmt.Sprintf("Unregistered redirect_uri (%q).", redirectURI)
-		return req, &oauth2Error{"", "", errInvalidRequest, description}
+		return req, &authErr{"", "", errInvalidRequest, description}
 	}
 
-	newErr := func(typ, format string, a ...interface{}) *oauth2Error {
-		return &oauth2Error{state, redirectURI, typ, fmt.Sprintf(format, a...)}
+	newErr := func(typ, format string, a ...interface{}) *authErr {
+		return &authErr{state, redirectURI, typ, fmt.Sprintf(format, a...)}
 	}
 
 	scopes := strings.Split(r.Form.Get("scope"), " ")
@@ -297,14 +326,14 @@ type tokenRequest struct {
 	Scopes      []string
 }
 
-func handleTokenRequest(s storage.Storage, w http.ResponseWriter, r *http.Request) *oauth2Error {
+func handleTokenRequest(s storage.Storage, w http.ResponseWriter, r *http.Request) *authErr {
 	return nil
 }
 
-func handleRefreshRequest(s storage.Storage, w http.ResponseWriter, r *http.Request, client storage.Client) *oauth2Error {
+func handleRefreshRequest(s storage.Storage, w http.ResponseWriter, r *http.Request, client storage.Client) *authErr {
 	return nil
 }
 
-func handleCodeRequest(s storage.Storage, w http.ResponseWriter, r *http.Request, client storage.Client) *oauth2Error {
+func handleCodeRequest(s storage.Storage, w http.ResponseWriter, r *http.Request, client storage.Client) *authErr {
 	return nil
 }

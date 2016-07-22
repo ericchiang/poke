@@ -73,6 +73,8 @@ type Storage interface {
 	CreateRefresh(r Refresh) error
 	CreateNonce(n Nonce) error
 
+	// TODO(ericchiang): return (T, bool, error) so we can indicate not found
+	// requests that way.
 	GetAuthRequest(id string) (AuthRequest, error)
 	GetAuthCode(id string) (AuthCode, error)
 	GetClient(id string) (Client, error)
@@ -183,6 +185,7 @@ type Refresh struct {
 
 	// Client this refresh token is valid for.
 	ClientID    string
+	RedirectURI string
 	ConnectorID string
 
 	// Scopes present in the initial request. Refresh requests may specify a set
@@ -193,8 +196,6 @@ type Refresh struct {
 	Nonce string
 
 	Identity Identity
-
-	Expiry time.Time
 }
 
 // Nonce represents a token which can be claimed exactly once.

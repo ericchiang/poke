@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -289,6 +290,13 @@ func (s *Server) sendCodeResponse(w http.ResponseWriter, r *http.Request, authRe
 		s.renderError(w, http.StatusInternalServerError, errServerError, "")
 		return
 	}
+
+	if authReq.RedirectURI == "urn:ietf:wg:oauth:2.0:oob" {
+		// TODO(ericchiang): Add a proper template.
+		fmt.Fprintf(w, "Code: %s", code.ID)
+		return
+	}
+
 	u, err := url.Parse(authReq.RedirectURI)
 	if err != nil {
 		s.renderError(w, http.StatusInternalServerError, errServerError, "Invalid redirect URI.")
@@ -302,6 +310,193 @@ func (s *Server) sendCodeResponse(w http.ResponseWriter, r *http.Request, authRe
 }
 
 func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
+	clientID, clientSecret, ok := r.BasicAuth()
+	if ok {
+		var err error
+		if clientID, err = url.QueryUnescape(clientID); err != nil {
+			tokenErr(w, errInvalidRequest, "client_id improperly encoded", http.StatusBadRequest)
+			return
+		}
+		if clientSecret, err = url.QueryUnescape(clientSecret); err != nil {
+			tokenErr(w, errInvalidRequest, "client_secret improperly encoded", http.StatusBadRequest)
+			return
+		}
+	} else {
+		clientID = r.PostFormValue("client_id")
+		clientSecret = r.PostFormValue("client_secret")
+	}
+
+	client, err := s.storage.GetClient(clientID)
+	if err != nil {
+		if err != storage.ErrNotFound {
+			log.Printf("failed to get client: %v", err)
+			tokenErr(w, errServerError, "", http.StatusInternalServerError)
+		} else {
+			tokenErr(w, errInvalidClient, "Invalid client credentials.", http.StatusUnauthorized)
+		}
+		return
+	}
+	if client.Secret != clientSecret {
+		tokenErr(w, errInvalidClient, "Invalid client credentials.", http.StatusUnauthorized)
+		return
+	}
+
+	grantType := r.PostFormValue("grant_type")
+	switch grantType {
+	case "authorization_code":
+		s.handleAuthCode(w, r, client)
+	case "refresh_token":
+		s.handleRefreshToken(w, r, client)
+	default:
+		tokenErr(w, errInvalidGrant, "", http.StatusBadRequest)
+	}
+}
+
+// handle an access token request https://tools.ietf.org/html/rfc6749#section-4.1.3
+func (s *Server) handleAuthCode(w http.ResponseWriter, r *http.Request, client storage.Client) {
+	code := r.PostFormValue("code")
+	redirectURI := r.PostFormValue("redirect_uri")
+
+	authCode, err := s.storage.GetAuthCode(code)
+	if err != nil || s.now().After(authCode.Expiry) || authCode.ClientID != client.ID {
+		if err != storage.ErrNotFound {
+			log.Printf("failed to get auth code: %v", err)
+			tokenErr(w, errServerError, "", http.StatusInternalServerError)
+		} else {
+			tokenErr(w, errInvalidRequest, "Invalid or expired code parameter.", http.StatusBadRequest)
+		}
+		return
+	}
+
+	if authCode.RedirectURI != redirectURI {
+		tokenErr(w, errInvalidRequest, "redirect_uri did not match URI from initial request.", http.StatusBadRequest)
+		return
+	}
+
+	idToken, expiry, err := s.newIDToken(client.ID, authCode.Identity, authCode.Scopes, authCode.Nonce)
+	if err != nil {
+		log.Printf("failed to create ID token: %v", err)
+		tokenErr(w, errServerError, "", http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.storage.DeleteAuthCode(code); err != nil {
+		log.Printf("failed to delete auth code: %v", err)
+		tokenErr(w, errServerError, "", http.StatusInternalServerError)
+		return
+	}
+
+	reqRefresh := func() bool {
+		for _, scope := range authCode.Scopes {
+			if scope == scopeOfflineAccess {
+				return true
+			}
+		}
+		return false
+	}()
+	var refreshToken string
+	if reqRefresh {
+		refresh := storage.Refresh{
+			RefreshToken: storage.NewNonce(),
+			ClientID:     authCode.ClientID,
+			ConnectorID:  authCode.ConnectorID,
+			RedirectURI:  authCode.RedirectURI,
+			Scopes:       authCode.Scopes,
+			Identity:     authCode.Identity,
+			Nonce:        authCode.Nonce,
+		}
+		if err := s.storage.CreateRefresh(refresh); err != nil {
+			log.Printf("failed to create refresh token: %v", err)
+			tokenErr(w, errServerError, "", http.StatusInternalServerError)
+			return
+		}
+		refreshToken = refresh.RefreshToken
+	}
+	s.writeAccessToken(w, idToken, refreshToken, expiry)
+}
+
+// handle a refresh token request https://tools.ietf.org/html/rfc6749#section-6
+func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request, client storage.Client) {
+	code := r.PostFormValue("refresh_token")
+	scope := r.PostFormValue("scope")
+	if code == "" {
+		tokenErr(w, errInvalidRequest, "No refresh token in request.", http.StatusBadRequest)
+		return
+	}
+
+	refresh, err := s.storage.GetRefresh(code)
+	if err != nil || refresh.ClientID != client.ID {
+		if err != storage.ErrNotFound {
+			log.Printf("failed to get auth code: %v", err)
+			tokenErr(w, errServerError, "", http.StatusInternalServerError)
+		} else {
+			tokenErr(w, errInvalidRequest, "Refresh token is invalid or has already been claimed by another client.", http.StatusBadRequest)
+		}
+		return
+	}
+
+	scopes := refresh.Scopes
+	if scope != "" {
+		requestedScopes := strings.Split(scope, " ")
+		contains := func() bool {
+		Loop:
+			for _, s := range requestedScopes {
+				for _, scope := range refresh.Scopes {
+					if s == scope {
+						continue Loop
+					}
+				}
+				return false
+			}
+			return true
+		}()
+		if !contains {
+			tokenErr(w, errInvalidRequest, "Requested scopes did not contain authorized scopes.", http.StatusBadRequest)
+			return
+		}
+		scopes = requestedScopes
+	}
+
+	// TODO(ericchiang): re-auth with backends
+
+	idToken, expiry, err := s.newIDToken(client.ID, refresh.Identity, scopes, refresh.Nonce)
+	if err != nil {
+		log.Printf("failed to create ID token: %v", err)
+		tokenErr(w, errServerError, "", http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.storage.DeleteRefresh(code); err != nil {
+		log.Printf("failed to delete auth code: %v", err)
+		tokenErr(w, errServerError, "", http.StatusInternalServerError)
+		return
+	}
+	refresh.RefreshToken = storage.NewNonce()
+	if err := s.storage.CreateRefresh(refresh); err != nil {
+		log.Printf("failed to create refresh token: %v", err)
+		tokenErr(w, errServerError, "", http.StatusInternalServerError)
+		return
+	}
+	s.writeAccessToken(w, idToken, refresh.RefreshToken, expiry)
+}
+
+func (s *Server) writeAccessToken(w http.ResponseWriter, idToken, refreshToken string, expiry time.Time) {
+	resp := struct {
+		AccessToken  string `json:"access_token"` // TODO(ericchiang): figure out what to do with access tokens
+		TokenType    string `json:"token_type"`
+		ExpiresIn    int    `json:"expires_in"`
+		RefreshToken string `json:"refresh_token,omitempty"`
+		IDToken      string `json:"id_token"`
+	}{storage.NewNonce(), "bearer", int(expiry.Sub(s.now())), refreshToken, idToken}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("failed to marshal access token response: %v", err)
+		tokenErr(w, errServerError, "", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Write(data)
 }
 
 func (s *Server) renderError(w http.ResponseWriter, status int, err, description string) {
