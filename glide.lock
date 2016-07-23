@@ -1,5 +1,5 @@
-hash: acef4b3fe612c74c3e99fa7be079836a72cd97d47efbfc6c17db162f52044ce1
-updated: 2016-07-22T22:33:36.147305619-07:00
+hash: 8b33b8abf5bca183ffa7108b03f4001f4d23f7f2e26f773f5bcb4bfefa51a26f
+updated: 2016-07-22T23:25:33.173188655-07:00
 imports:
 - name: github.com/ericchiang/oidc
   version: 69fec81d167d815f4f455c741b2a94ffaf547ed2
@@ -12,7 +12,7 @@ imports:
 - name: github.com/gorilla/mux
   version: 9fa818a44c2bf1396a17f9d5a3c0f6dd39d2ff8e
 - name: github.com/gtank/cryptopasta
-  version: 1084c606c5943c8b28f4319250261b21951ac775
+  version: e7e23673cac3f529f49e22f94e4af6d12bb49dba
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/mitchellh/go-homedir

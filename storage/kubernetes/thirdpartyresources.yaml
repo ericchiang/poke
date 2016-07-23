@@ -1,0 +1,43 @@
+metadata:
+  name: auth-code.oidc.coreos.com
+apiVersion: extensions/v1beta1
+kind: ThirdPartyResource
+description: "A code which can be claimed for an access token."
+versions:
+- name: v1
+---
+
+metadata:
+  name: auth-request.oidc.coreos.com
+apiVersion: extensions/v1beta1
+kind: ThirdPartyResource
+description: "A request for an end user to authorize a user."
+versions:
+- name: v1
+---
+
+metadata:
+  name: client.oidc.coreos.com
+apiVersion: extensions/v1beta1
+kind: ThirdPartyResource
+description: "An OAuth2 client."
+versions:
+- name: v1
+---
+
+metadata:
+  name: oidc-key.oidc.coreos.com
+apiVersion: extensions/v1beta1
+kind: ThirdPartyResource
+description: "Keys used to sign and verify OpenID Connect tokens."
+versions:
+- name: v1
+---
+
+metadata:
+  name: refresh-token.oidc.coreos.com
+apiVersion: extensions/v1beta1
+kind: ThirdPartyResource
+description: "Refresh tokens for clients to continuously act on behalf of an end user."
+versions:
+- name: v1

@@ -30,7 +30,7 @@ import:
   version: aed02d124ae4a0e94fea4541c8effd05bf0c8296
 
 - package: github.com/gtank/cryptopasta
-  version: 1084c606c5943c8b28f4319250261b21951ac775
+  version: e7e23673cac3f529f49e22f94e4af6d12bb49dba
 - package: golang.org/x/crypto
   version: 2c99acdd1e9b90d779ca23f632aad86af9909c62
   subpackages:
