@@ -17,7 +17,6 @@ func New() storage.Storage {
 	return &memStorage{
 		clients:       make(map[string]storage.Client),
 		authCodes:     make(map[string]storage.AuthCode),
-		nonces:        make(map[string]storage.Nonce),
 		refreshTokens: make(map[string]storage.Refresh),
 		authReqs:      make(map[string]storage.AuthRequest),
 	}
@@ -37,7 +36,6 @@ type memStorage struct {
 
 	clients       map[string]storage.Client
 	authCodes     map[string]storage.AuthCode
-	nonces        map[string]storage.Nonce
 	refreshTokens map[string]storage.Refresh
 	authReqs      map[string]storage.AuthRequest
 
@@ -66,11 +64,6 @@ func (s *memStorage) CreateAuthCode(c storage.AuthCode) error {
 
 func (s *memStorage) CreateRefresh(r storage.Refresh) error {
 	s.tx(func() { s.refreshTokens[r.RefreshToken] = r })
-	return nil
-}
-
-func (s *memStorage) CreateNonce(n storage.Nonce) error {
-	s.tx(func() { s.nonces[n.Nonce] = n })
 	return nil
 }
 
@@ -152,17 +145,6 @@ func (s *memStorage) DeleteRefresh(token string) (err error) {
 			return
 		}
 		delete(s.refreshTokens, token)
-	})
-	return
-}
-
-func (s *memStorage) DeleteNonce(nonce string) (err error) {
-	s.tx(func() {
-		if _, ok := s.nonces[nonce]; !ok {
-			err = storage.ErrNotFound
-			return
-		}
-		delete(s.nonces, nonce)
 	})
 	return
 }

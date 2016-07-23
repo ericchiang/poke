@@ -71,7 +71,6 @@ type Storage interface {
 	CreateClient(c Client) error
 	CreateAuthCode(c AuthCode) error
 	CreateRefresh(r Refresh) error
-	CreateNonce(n Nonce) error
 
 	// TODO(ericchiang): return (T, bool, error) so we can indicate not found
 	// requests that way.
@@ -89,7 +88,6 @@ type Storage interface {
 	DeleteAuthCode(code string) error
 	DeleteClient(id string) error
 	DeleteRefresh(id string) error
-	DeleteNonce(nonce string) error
 
 	// Update functions are assumed to be a performed within a single object transaction.
 	UpdateClient(id string, updater func(old Client) (Client, error)) error
@@ -196,12 +194,6 @@ type Refresh struct {
 	Nonce string
 
 	Identity Identity
-}
-
-// Nonce represents a token which can be claimed exactly once.
-type Nonce struct {
-	Nonce  string
-	Expiry time.Time
 }
 
 // DecryptionKey is a rotated encryption key which can still be used to decrypt

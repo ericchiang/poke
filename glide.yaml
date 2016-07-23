@@ -58,3 +58,6 @@ import:
   version: 874264fbbb43f4d91e999fecb4b40143ed611400
   subpackages:
   - proto
+
+- package: github.com/mitchellh/go-homedir
+  verison: 756f7b183b7ab78acdbbee5c7f392838ed459dda
