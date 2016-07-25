@@ -60,10 +60,15 @@ var approvalTmpl = template.Must(template.New("approval-template").Parse(`<html>
 <body>
 <p>User: {{ .User }}</p>
 <p>Client: {{ .ClientName }}</p>
-<form method="POST">
+<form method="post">
 <input type="hidden" name="state" value="{{ .State }}"/>
-<button name="subject" type="submit" value="approve">Approve</button>
-<button name="subject" type="submit" value="reject">Reject</button>
+<input type="hidden" name="approval" value="approve">
+<button type="submit">Approve</button>
+</form>
+<form method="post">
+<input type="hidden" name="state" value="{{ .State }}"/>
+<input type="hidden" name="approval" value="reject">
+<button type="submit">Reject</button>
 </form>
 </body>
 </html>`))

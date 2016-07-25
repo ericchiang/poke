@@ -252,11 +252,11 @@ func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
 		}
 		renderApprovalTmpl(w, authReq.ID, *authReq.Identity, client, authReq.Scopes)
 	case "POST":
-
-		// TODO(ericchiang): actually check approval.
-
-		authCode := storage.AuthCode{}
-		_ = authCode
+		if r.FormValue("approval") != "approve" {
+			s.renderError(w, http.StatusInternalServerError, "approval rejected", "")
+			return
+		}
+		s.sendCodeResponse(w, r, authReq, *authReq.Identity)
 	}
 }
 

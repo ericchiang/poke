@@ -72,13 +72,14 @@ func (c *client) urlFor(apiVersion, namespace, resource, name string) string {
 }
 
 type httpErr struct {
+	method string
 	url    string
 	status string
 	body   []byte
 }
 
 func (e *httpErr) Error() string {
-	return fmt.Sprintf("%s %s: response from server \"%s\"", e.url, e.status, bytes.TrimSpace(e.body))
+	return fmt.Sprintf("%s %s %s: response from server \"%s\"", e.method, e.url, e.status, bytes.TrimSpace(e.body))
 }
 
 func checkHTTPErr(r *http.Response, validStatusCodes ...int) error {
@@ -87,10 +88,12 @@ func checkHTTPErr(r *http.Response, validStatusCodes ...int) error {
 			return nil
 		}
 	}
+
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 2<<15)) // 64 KiB
 	if err != nil {
 		return fmt.Errorf("read response body: %v", err)
 	}
+
 	url := ""
 	if r.Request != nil {
 		url = r.Request.URL.String()

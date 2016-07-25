@@ -21,7 +21,7 @@ const (
 )
 
 const (
-	resourceAuthCode     = "authcode"
+	resourceAuthCode     = "authcodes"
 	resourceAuthRequest  = "authrequests"
 	resourceClient       = "oauth2clients"
 	resourceRefreshToken = "refreshtokens"
