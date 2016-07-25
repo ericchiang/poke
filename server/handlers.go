@@ -520,13 +520,22 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request, clie
 }
 
 func (s *Server) writeAccessToken(w http.ResponseWriter, idToken, refreshToken string, expiry time.Time) {
+	// TODO(ericchiang): figure out an access token story and support the user info
+	// endpoint. For now use a random value so no one depends on the access_token
+	// holding a specific structure.
 	resp := struct {
-		AccessToken  string `json:"access_token"` // TODO(ericchiang): figure out what to do with access tokens
+		AccessToken  string `json:"access_token"`
 		TokenType    string `json:"token_type"`
 		ExpiresIn    int    `json:"expires_in"`
 		RefreshToken string `json:"refresh_token,omitempty"`
 		IDToken      string `json:"id_token"`
-	}{storage.NewNonce(), "bearer", int(expiry.Sub(s.now())), refreshToken, idToken}
+	}{
+		storage.NewNonce(),
+		"bearer",
+		int(expiry.Sub(s.now())),
+		refreshToken,
+		idToken,
+	}
 	data, err := json.Marshal(resp)
 	if err != nil {
 		log.Printf("failed to marshal access token response: %v", err)

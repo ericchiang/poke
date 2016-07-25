@@ -16,7 +16,7 @@ metadata:
   name: auth-request.authrequests.oidc.coreos.com
 apiVersion: extensions/v1beta1
 kind: ThirdPartyResource
-description: "A request for an end user to authorize a user."
+description: "A request for an end user to authorize a client."
 versions:
 - name: v1
 ---
@@ -25,7 +25,7 @@ metadata:
   name: o-auth2-client.oauth2clients.oidc.coreos.com
 apiVersion: extensions/v1beta1
 kind: ThirdPartyResource
-description: "An OAuth2 client."
+description: "An OpenID Connect client."
 versions:
 - name: v1
 ---
