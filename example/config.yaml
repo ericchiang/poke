@@ -1,9 +1,9 @@
+issuer: http://127.0.0.1:5556
 storage:
-  type: memory
+  type: kubernetes
 connectors:
-  - type: ldap
-    id: libcore 
+  - type: mock
+    id: mock
+    name: Mock
 web:
-  http: localhost:5556
-api:
-  listen: localhost:5554
+  http: 127.0.0.1:5556

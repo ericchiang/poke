@@ -3,17 +3,21 @@ package kubernetes
 import (
 	"time"
 
-	"github.com/ericchiang/poke/storage/kubernetes/types/unversioned"
-	"github.com/ericchiang/poke/storage/kubernetes/types/v1"
-
 	jose "gopkg.in/square/go-jose.v2"
+
+	"github.com/ericchiang/poke/storage"
+	"github.com/ericchiang/poke/storage/kubernetes/k8sapi"
 )
+
+// There will only ever be a single keys resource. Maintain this by setting a
+// common name.
+const keysName = "openid-connect-keys"
 
 // Client is a mirrored struct from storage with JSON struct tags and
 // Kubernetes type metadata.
 type Client struct {
-	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
+	k8sapi.TypeMeta   `json:",inline"`
+	k8sapi.ObjectMeta `json:"metadata,omitempty"`
 
 	Secret       string   `json:"secret,omitempty"`
 	RedirectURIs []string `json:"redirectURIs,omitempty"`
@@ -23,6 +27,44 @@ type Client struct {
 
 	Name    string `json:"name,omitempty"`
 	LogoURL string `json:"logoURL,omitempty"`
+}
+
+// ClientList is a list of Clients.
+type ClientList struct {
+	k8sapi.TypeMeta `json:",inline"`
+	k8sapi.ListMeta `json:"metadata,omitempty"`
+	Clients         []Client `json:"items"`
+}
+
+func (cli *client) fromStorageClient(c storage.Client) Client {
+	return Client{
+		TypeMeta: k8sapi.TypeMeta{
+			Kind:       kindClient,
+			APIVersion: cli.apiVersionForResource(resourceClient),
+		},
+		ObjectMeta: k8sapi.ObjectMeta{
+			Name:      c.ID,
+			Namespace: cli.namespace,
+		},
+		Secret:       c.Secret,
+		RedirectURIs: c.RedirectURIs,
+		TrustedPeers: c.TrustedPeers,
+		Public:       c.Public,
+		Name:         c.Name,
+		LogoURL:      c.LogoURL,
+	}
+}
+
+func toStorageClient(c Client) storage.Client {
+	return storage.Client{
+		ID:           c.ObjectMeta.Name,
+		Secret:       c.Secret,
+		RedirectURIs: c.RedirectURIs,
+		TrustedPeers: c.TrustedPeers,
+		Public:       c.Public,
+		Name:         c.Name,
+		LogoURL:      c.LogoURL,
+	}
 }
 
 // Identity is a mirrored struct from storage with JSON struct tags.
@@ -36,11 +78,33 @@ type Identity struct {
 	ConnectorData []byte `json:"connectorData,omitempty"`
 }
 
+func fromStorageIdentity(i storage.Identity) Identity {
+	return Identity{
+		UserID:        i.UserID,
+		Username:      i.Username,
+		Email:         i.Email,
+		EmailVerified: i.EmailVerified,
+		Groups:        i.Groups,
+		ConnectorData: i.ConnectorData,
+	}
+}
+
+func toStorageIdentity(i Identity) storage.Identity {
+	return storage.Identity{
+		UserID:        i.UserID,
+		Username:      i.Username,
+		Email:         i.Email,
+		EmailVerified: i.EmailVerified,
+		Groups:        i.Groups,
+		ConnectorData: i.ConnectorData,
+	}
+}
+
 // AuthRequest is a mirrored struct from storage with JSON struct tags and
 // Kubernetes type metadata.
 type AuthRequest struct {
-	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
+	k8sapi.TypeMeta   `json:",inline"`
+	k8sapi.ObjectMeta `json:"metadata,omitempty"`
 
 	ClientID      string   `json:"clientID"`
 	ResponseTypes []string `json:"responseTypes,omitempty"`
@@ -64,11 +128,65 @@ type AuthRequest struct {
 	Expiry time.Time `json:"expiry"`
 }
 
+// AuthRequestList is a list of AuthRequests.
+type AuthRequestList struct {
+	k8sapi.TypeMeta `json:",inline"`
+	k8sapi.ListMeta `json:"metadata,omitempty"`
+	AuthRequests    []AuthRequest `json:"items"`
+}
+
+func toStorageAuthRequest(req AuthRequest) storage.AuthRequest {
+	a := storage.AuthRequest{
+		ID:                  req.ObjectMeta.Name,
+		ClientID:            req.ClientID,
+		ResponseTypes:       req.ResponseTypes,
+		Scopes:              req.Scopes,
+		RedirectURI:         req.RedirectURI,
+		Nonce:               req.Nonce,
+		State:               req.State,
+		ForceApprovalPrompt: req.ForceApprovalPrompt,
+		ConnectorID:         req.ConnectorID,
+		Expiry:              req.Expiry,
+	}
+	if req.Identity != nil {
+		i := toStorageIdentity(*req.Identity)
+		a.Identity = &i
+	}
+	return a
+}
+
+func (cli *client) fromStorageAuthRequest(a storage.AuthRequest) AuthRequest {
+	req := AuthRequest{
+		TypeMeta: k8sapi.TypeMeta{
+			Kind:       kindAuthRequest,
+			APIVersion: cli.apiVersionForResource(resourceAuthRequest),
+		},
+		ObjectMeta: k8sapi.ObjectMeta{
+			Name:      a.ID,
+			Namespace: cli.namespace,
+		},
+		ClientID:            a.ClientID,
+		ResponseTypes:       a.ResponseTypes,
+		Scopes:              a.Scopes,
+		RedirectURI:         a.RedirectURI,
+		Nonce:               a.Nonce,
+		State:               a.State,
+		ForceApprovalPrompt: a.ForceApprovalPrompt,
+		ConnectorID:         a.ConnectorID,
+		Expiry:              a.Expiry,
+	}
+	if a.Identity != nil {
+		i := fromStorageIdentity(*a.Identity)
+		req.Identity = &i
+	}
+	return req
+}
+
 // AuthCode is a mirrored struct from storage with JSON struct tags and
 // Kubernetes type metadata.
 type AuthCode struct {
-	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
+	k8sapi.TypeMeta   `json:",inline"`
+	k8sapi.ObjectMeta `json:"metadata,omitempty"`
 
 	ClientID    string   `json:"clientID"`
 	Scopes      []string `json:"scopes,omitempty"`
@@ -83,41 +201,80 @@ type AuthCode struct {
 	Expiry time.Time `json:"expiry"`
 }
 
+// AuthCodeList is a list of AuthCodes.
+type AuthCodeList struct {
+	k8sapi.TypeMeta `json:",inline"`
+	k8sapi.ListMeta `json:"metadata,omitempty"`
+	AuthCodes       []AuthCode `json:"items"`
+}
+
+func (cli *client) fromStorageAuthCode(a storage.AuthCode) AuthCode {
+	return AuthCode{
+		TypeMeta: k8sapi.TypeMeta{
+			Kind:       kindAuthCode,
+			APIVersion: cli.apiVersionForResource(resourceAuthCode),
+		},
+		ObjectMeta: k8sapi.ObjectMeta{
+			Name:      a.ID,
+			Namespace: cli.namespace,
+		},
+		ClientID:    a.ClientID,
+		RedirectURI: a.RedirectURI,
+		ConnectorID: a.ConnectorID,
+		Nonce:       a.Nonce,
+		Scopes:      a.Scopes,
+		Identity:    fromStorageIdentity(a.Identity),
+		Expiry:      a.Expiry,
+	}
+}
+
+func toStorageAuthCode(a AuthCode) storage.AuthCode {
+	return storage.AuthCode{
+		ID:          a.ObjectMeta.Name,
+		ClientID:    a.ClientID,
+		RedirectURI: a.RedirectURI,
+		ConnectorID: a.ConnectorID,
+		Nonce:       a.Nonce,
+		Scopes:      a.Scopes,
+		Identity:    toStorageIdentity(a.Identity),
+		Expiry:      a.Expiry,
+	}
+}
+
 // Refresh is a mirrored struct from storage with JSON struct tags and
 // Kubernetes type metadata.
 type Refresh struct {
-	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
+	k8sapi.TypeMeta   `json:",inline"`
+	k8sapi.ObjectMeta `json:"metadata,omitempty"`
 
-	ClientID    string   `json:"clientID"`
-	Scopes      []string `json:"scopes,omitempty"`
-	RedirectURI string   `json:"redirectURI"`
+	ClientID string   `json:"clientID"`
+	Scopes   []string `json:"scopes,omitempty"`
 
 	Nonce string `json:"nonce,omitempty"`
-	State string `json:"state,omitempty"`
 
 	Identity    Identity `json:"identity,omitempty"`
 	ConnectorID string   `json:"connectorID,omitempty"`
 }
 
+// RefreshList is a list of refresh tokens.
+type RefreshList struct {
+	k8sapi.TypeMeta `json:",inline"`
+	k8sapi.ListMeta `json:"metadata,omitempty"`
+	RefreshTokens   []Refresh `json:"items"`
+}
+
 // Keys is a mirrored struct from storage with JSON struct tags and Kubernetes
 // type metadata.
 type Keys struct {
-	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
+	k8sapi.TypeMeta   `json:",inline"`
+	k8sapi.ObjectMeta `json:"metadata,omitempty"`
 
 	// Key for creating and verifying signatures. These may be nil.
 	SigningKey    *jose.JSONWebKey `json:"signingKey,omitempty"`
 	SigningKeyPub *jose.JSONWebKey `json:"signingKeyPub,omitempty"`
 	// Old signing keys which have been rotated but can still be used to validate
 	// existing signatures.
-	VerificationKeys []VerificationKey `json:"verificationKeys,omitempty"`
-
-	// Key for encryption messages.
-	EncryptionKey *[32]byte `json:"encryptionKey,omitempty"`
-	// Old encrpytion keys which have been rotated but can still be used to
-	// decrypt existing messages.
-	DecryptionKeys []DecryptionKey `json:"decryptionKeys,omitempty"`
+	VerificationKeys []storage.VerificationKey `json:"verificationKeys,omitempty"`
 
 	// The next time the signing key will rotate.
 	//
@@ -125,16 +282,28 @@ type Keys struct {
 	NextRotation time.Time `json:"nextRotation"`
 }
 
-// DecryptionKey is a rotated encryption key which can still be used to decrypt
-// existing messages.
-type DecryptionKey struct {
-	Key    *[32]byte `json:"key"`
-	Expiry time.Time `json:"expiry"`
+func (cli *client) fromStorageKeys(keys storage.Keys) Keys {
+	return Keys{
+		TypeMeta: k8sapi.TypeMeta{
+			Kind:       kindKeys,
+			APIVersion: cli.apiVersionForResource(resourceKeys),
+		},
+		ObjectMeta: k8sapi.ObjectMeta{
+			Name:      keysName,
+			Namespace: cli.namespace,
+		},
+		SigningKey:       keys.SigningKey,
+		SigningKeyPub:    keys.SigningKeyPub,
+		VerificationKeys: keys.VerificationKeys,
+		NextRotation:     keys.NextRotation,
+	}
 }
 
-// VerificationKey is a rotated signing key which can still be used to verify
-// signatures.
-type VerificationKey struct {
-	PublicKey *jose.JSONWebKey `json:"publicKey"`
-	Expiry    time.Time        `json:"expiry"`
+func toStorageKeys(keys Keys) storage.Keys {
+	return storage.Keys{
+		SigningKey:       keys.SigningKey,
+		SigningKeyPub:    keys.SigningKeyPub,
+		VerificationKeys: keys.VerificationKeys,
+		NextRotation:     keys.NextRotation,
+	}
 }

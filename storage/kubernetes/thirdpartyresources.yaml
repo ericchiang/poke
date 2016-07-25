@@ -1,5 +1,10 @@
+# NOTE: Because of a bug in third party resources, each resource must be in it's
+# own API Group.
+#
+# See fix at https://github.com/kubernetes/kubernetes/pull/28414
+
 metadata:
-  name: auth-code.oidc.coreos.com
+  name: auth-code.authcodes.oidc.coreos.com
 apiVersion: extensions/v1beta1
 kind: ThirdPartyResource
 description: "A code which can be claimed for an access token."
@@ -8,7 +13,7 @@ versions:
 ---
 
 metadata:
-  name: auth-request.oidc.coreos.com
+  name: auth-request.authrequests.oidc.coreos.com
 apiVersion: extensions/v1beta1
 kind: ThirdPartyResource
 description: "A request for an end user to authorize a user."
@@ -17,7 +22,7 @@ versions:
 ---
 
 metadata:
-  name: client.oidc.coreos.com
+  name: o-auth2-client.oauth2clients.oidc.coreos.com
 apiVersion: extensions/v1beta1
 kind: ThirdPartyResource
 description: "An OAuth2 client."
@@ -26,7 +31,7 @@ versions:
 ---
 
 metadata:
-  name: oidc-key.oidc.coreos.com
+  name: signing-key.signingkeies.oidc.coreos.com
 apiVersion: extensions/v1beta1
 kind: ThirdPartyResource
 description: "Keys used to sign and verify OpenID Connect tokens."
@@ -35,7 +40,7 @@ versions:
 ---
 
 metadata:
-  name: refresh-token.oidc.coreos.com
+  name: refresh-token.refreshtokens.oidc.coreos.com
 apiVersion: extensions/v1beta1
 kind: ThirdPartyResource
 description: "Refresh tokens for clients to continuously act on behalf of an end user."

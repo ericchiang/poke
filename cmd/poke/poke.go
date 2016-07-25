@@ -2,48 +2,27 @@ package main
 
 import (
 	"fmt"
+	"os"
 
-	"github.com/ericchiang/poke/connector"
-	"github.com/ericchiang/poke/connector/ldap"
-	"github.com/ericchiang/poke/connector/mock"
+	"github.com/spf13/cobra"
 )
 
-type config struct {
-	Web struct {
-		Issuer string `yaml:"issuer"`
-	} `yaml:"web"`
-	Connectors []connectorConfig `yaml:"connectors"`
+func commandRoot() *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use: "poke",
+		Run: func(cmd *cobra.Command, args []string) {
+			cmd.Help()
+			os.Exit(2)
+		},
+	}
+	rootCmd.AddCommand(commandServe())
+	rootCmd.AddCommand(commandVersion())
+	return rootCmd
 }
 
-type connectorMetadata struct {
-	Type string `yaml:"type"`
-	Name string `yaml:"name"`
-	ID   string `yaml:"id"`
-}
-
-// connectorConfig is a magical type that can unmarshal YAML dynamically. The
-// Type field determines the connector type, which is then customized for Config.
-type connectorConfig struct {
-	connectorMetadata
-	Config interface {
-		Open() (connector.Connector, error)
+func main() {
+	if err := commandRoot().Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(2)
 	}
 }
-
-func (c *connectorConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	if err := unmarshal(&c.connectorMetadata); err != nil {
-		return err
-	}
-
-	switch c.Type {
-	case "mock":
-		c.Config = &mock.Config{}
-	case "ldap":
-		c.Config = &ldap.Config{}
-	default:
-		return fmt.Errorf("unknown connector type %q", c.Type)
-	}
-	return unmarshal(c.Config)
-}
-
-func main() {}

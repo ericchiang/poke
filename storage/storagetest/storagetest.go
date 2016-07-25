@@ -60,7 +60,6 @@ func testCreateRefresh(t *testing.T, s storage.Storage) {
 		RefreshToken: id,
 		ClientID:     "client_id",
 		ConnectorID:  "client_secret",
-		RedirectURI:  "a redirect",
 		Scopes:       []string{"openid", "email", "profile"},
 	}
 	if err := s.CreateRefresh(refresh); err != nil {
@@ -73,4 +72,13 @@ func testCreateRefresh(t *testing.T, s storage.Storage) {
 	if !reflect.DeepEqual(gotRefresh, refresh) {
 		t.Errorf("refresh returned did not match expected")
 	}
+
+	if err := s.DeleteRefresh(id); err != nil {
+		t.Fatalf("failed to delete refresh request: %v", err)
+	}
+
+	if _, err := s.GetRefresh(id); err != storage.ErrNotFound {
+		t.Errorf("after deleting refresh expected storage.ErrNotFound, got %v", err)
+	}
+
 }

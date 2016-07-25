@@ -14,8 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1 holds stable version 1 of the Kubernetes client types.
-package v1
+package k8sapi
 
 // Where possible, json tags match the cli argument names.
 // Top level config objects and all values required for proper functioning are not "omitempty".  Any truly optional piece of config is allowed to be omitted.

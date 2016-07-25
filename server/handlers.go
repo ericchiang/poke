@@ -400,7 +400,6 @@ func (s *Server) handleAuthCode(w http.ResponseWriter, r *http.Request, client s
 			RefreshToken: storage.NewNonce(),
 			ClientID:     authCode.ClientID,
 			ConnectorID:  authCode.ConnectorID,
-			RedirectURI:  authCode.RedirectURI,
 			Scopes:       authCode.Scopes,
 			Identity:     authCode.Identity,
 			Nonce:        authCode.Nonce,

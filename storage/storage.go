@@ -1,11 +1,15 @@
 package storage
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"encoding/base64"
+	"crypto/rsa"
+	"encoding/base32"
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	jose "gopkg.in/square/go-jose.v2"
@@ -21,13 +25,19 @@ var (
 // ErrNotFound is the error returned by storages if a resource cannot be found.
 var ErrNotFound = errors.New("not found")
 
-// NewNonce returns a 64 bit nonce suitable for object IDs.
+// Kubernetes only allows lower case letters for names.
+//
+// TODO(ericchiang): refactor ID creation onto the storage.
+var encoding = base32.NewEncoding("abcdefghijklmnopqrstuvwxyz234567")
+
+// NewNonce returns a new ID for the objects.
 func NewNonce() string {
 	buff := make([]byte, 8) // 64 bit random ID.
 	if _, err := io.ReadFull(rand.Reader, buff); err != nil {
 		panic(err)
 	}
-	return base64.RawURLEncoding.EncodeToString(buff)
+	// Trim padding
+	return strings.TrimRight(encoding.EncodeToString(buff), "=")
 }
 
 // Driver is the interface implemented by storage drivers.
@@ -183,7 +193,6 @@ type Refresh struct {
 
 	// Client this refresh token is valid for.
 	ClientID    string
-	RedirectURI string
 	ConnectorID string
 
 	// Scopes present in the initial request. Refresh requests may specify a set
@@ -196,18 +205,11 @@ type Refresh struct {
 	Identity Identity
 }
 
-// DecryptionKey is a rotated encryption key which can still be used to decrypt
-// existing messages.
-type DecryptionKey struct {
-	Key    *[32]byte
-	Expiry time.Time
-}
-
 // VerificationKey is a rotated signing key which can still be used to verify
 // signatures.
 type VerificationKey struct {
-	PublicKey *jose.JSONWebKey
-	Expiry    time.Time
+	PublicKey *jose.JSONWebKey `json:"publicKey"`
+	Expiry    time.Time        `json:"expiry"`
 }
 
 // Keys hold encryption and signing keys.
@@ -219,14 +221,43 @@ type Keys struct {
 	// existing signatures.
 	VerificationKeys []VerificationKey
 
-	// Key for encryption messages.
-	EncryptionKey *[32]byte
-	// Old encrpytion keys which have been rotated but can still be used to
-	// decrypt existing messages.
-	DecryptionKeys []DecryptionKey
-
 	// The next time the signing key will rotate.
 	//
 	// For caching purposes, implementations MUST NOT update keys before this time.
 	NextRotation time.Time
+}
+
+// Sign creates a JWT using the signing key.
+func (k Keys) Sign(payload []byte) (jws string, err error) {
+	if k.SigningKey == nil {
+		return "", fmt.Errorf("no key to sign payload with")
+	}
+	signingKey := jose.SigningKey{Key: k.SigningKey}
+
+	switch key := k.SigningKey.Key.(type) {
+	case *rsa.PrivateKey:
+		// TODO(ericchiang): Allow different cryptographic hashes.
+		signingKey.Algorithm = jose.RS256
+	case *ecdsa.PrivateKey:
+		switch key.Params() {
+		case elliptic.P256().Params():
+			signingKey.Algorithm = jose.ES256
+		case elliptic.P384().Params():
+			signingKey.Algorithm = jose.ES384
+		case elliptic.P521().Params():
+			signingKey.Algorithm = jose.ES512
+		default:
+			return "", errors.New("unsupported ecdsa curve")
+		}
+	}
+
+	signer, err := jose.NewSigner(signingKey, &jose.SignerOptions{})
+	if err != nil {
+		return "", fmt.Errorf("new signier: %v", err)
+	}
+	signature, err := signer.Sign(payload)
+	if err != nil {
+		return "", fmt.Errorf("signing payload: %v", err)
+	}
+	return signature.CompactSerialize()
 }

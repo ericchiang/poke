@@ -10,7 +10,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/gtank/cryptopasta"
 	"golang.org/x/net/context"
 	"gopkg.in/square/go-jose.v2"
 
@@ -95,12 +94,13 @@ func (k keyRotater) Close() error {
 
 func (k keyRotater) rotate() error {
 	keys, err := k.GetKeys()
-	if err != nil {
+	if err != nil && err != storage.ErrNotFound {
 		return fmt.Errorf("get keys: %v", err)
 	}
 	if k.now().Before(keys.NextRotation) {
 		return nil
 	}
+	log.Println("keys expired, rotating")
 
 	// Generate the key outside of a storage transaction.
 	key, err := k.strategy.key()
@@ -125,9 +125,8 @@ func (k keyRotater) rotate() error {
 		Use:       "sig",
 	}
 
-	encryptionKey := cryptopasta.NewEncryptionKey()
-
-	return k.Storage.UpdateKeys(func(keys storage.Keys) (storage.Keys, error) {
+	var nextRotation time.Time
+	err = k.Storage.UpdateKeys(func(keys storage.Keys) (storage.Keys, error) {
 		tNow := k.now()
 		if tNow.Before(keys.NextRotation) {
 			return storage.Keys{}, errors.New("keys already rotated")
@@ -152,28 +151,15 @@ func (k keyRotater) rotate() error {
 			keys.VerificationKeys = append(keys.VerificationKeys, verificationKey)
 		}
 
-		// Remove expired decryption keys.
-		i = 0
-		for _, key := range keys.DecryptionKeys {
-			if !key.Expiry.After(tNow) {
-				keys.DecryptionKeys[i] = key
-				i++
-			}
-		}
-		keys.DecryptionKeys = keys.DecryptionKeys[:i]
-
-		if keys.EncryptionKey != nil {
-			// Move current encryption key to a decription only key.
-			decryptionKey := storage.DecryptionKey{
-				Key:    keys.EncryptionKey,
-				Expiry: tNow.Add(k.strategy.verifyFor),
-			}
-			keys.DecryptionKeys = append(keys.DecryptionKeys, decryptionKey)
-		}
-
+		nextRotation = k.now().Add(k.strategy.period)
 		keys.SigningKey = priv
 		keys.SigningKeyPub = pub
-		keys.EncryptionKey = encryptionKey
+		keys.NextRotation = nextRotation
 		return keys, nil
 	})
+	if err != nil {
+		return err
+	}
+	log.Printf("keys rotated, next rotation: %s", nextRotation)
+	return nil
 }

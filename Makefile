@@ -2,8 +2,6 @@ PROJ="poke"
 ORG_PATH="github.com/ericchiang"
 REPO_PATH="$(ORG_PATH)/$(PROJ)"
 
-$(shell mkdir -p bin thirdparty)
-
 export GOBIN=$(PWD)/bin
 export GO15VENDOREXPERIMENT=1
 
@@ -22,19 +20,19 @@ else
 endif
 
 
-build: bin/rolo bin/roloctl
+build: bin/poke bin/pokectl
 
-bin/rolo: FORCE
+bin/poke: FORCE
 	@go install $(REPO_PATH)/cmd/poke
 
-bin/roloctl: FORCE
+bin/pokectl: FORCE
 	@go install $(REPO_PATH)/cmd/pokectl
 
 test:
-	@go test $(shell go list ./... | grep -v '/vendor/')
+	@go test -v $(shell go list ./... | grep -v '/vendor/')
 
 testrace:
-	@go test --race $(shell go list ./... | grep -v '/vendor/')
+	@go test -v --race $(shell go list ./... | grep -v '/vendor/')
 
 vet:
 	@go vet $(shell go list ./... | grep -v '/vendor/')

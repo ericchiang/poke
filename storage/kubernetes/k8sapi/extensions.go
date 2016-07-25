@@ -14,20 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
-
-import (
-	"github.com/ericchiang/poke/storage/kubernetes/types/unversioned"
-	"github.com/ericchiang/poke/storage/kubernetes/types/v1"
-)
+package k8sapi
 
 // A ThirdPartyResource is a generic representation of a resource, it is used by add-ons and plugins to add new resource
 // types to the API.  It consists of one or more Versions of the api.
 type ThirdPartyResource struct {
-	unversioned.TypeMeta `json:",inline"`
+	TypeMeta `json:",inline"`
 
 	// Standard object metadata
-	v1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+	ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	// Description is the description of this object.
 	Description string `json:"description,omitempty" protobuf:"bytes,2,opt,name=description"`
@@ -38,10 +33,10 @@ type ThirdPartyResource struct {
 
 // ThirdPartyResourceList is a list of ThirdPartyResources.
 type ThirdPartyResourceList struct {
-	unversioned.TypeMeta `json:",inline"`
+	TypeMeta `json:",inline"`
 
 	// Standard list metadata.
-	unversioned.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+	ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	// Items is the list of ThirdPartyResources.
 	Items []ThirdPartyResource `json:"items" protobuf:"bytes,2,rep,name=items"`

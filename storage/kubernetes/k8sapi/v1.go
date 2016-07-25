@@ -14,10 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1 holds stable version 1 of the Kubernetes server types.
-package v1
-
-import "github.com/ericchiang/poke/storage/kubernetes/types/unversioned"
+package k8sapi
 
 // ObjectMeta is metadata that all persisted resources must have, which includes all objects
 // users must create.
@@ -95,7 +92,7 @@ type ObjectMeta struct {
 	// Read-only.
 	// Null for lists.
 	// More info: http://releases.k8s.io/release-1.3/docs/devel/api-conventions.md#metadata
-	CreationTimestamp unversioned.Time `json:"creationTimestamp,omitempty" protobuf:"bytes,8,opt,name=creationTimestamp"`
+	CreationTimestamp Time `json:"creationTimestamp,omitempty" protobuf:"bytes,8,opt,name=creationTimestamp"`
 
 	// DeletionTimestamp is RFC 3339 date and time at which this resource will be deleted. This
 	// field is set by the server when a graceful deletion is requested by the user, and is not
@@ -111,7 +108,7 @@ type ObjectMeta struct {
 	// Populated by the system when a graceful deletion is requested.
 	// Read-only.
 	// More info: http://releases.k8s.io/release-1.3/docs/devel/api-conventions.md#metadata
-	DeletionTimestamp *unversioned.Time `json:"deletionTimestamp,omitempty" protobuf:"bytes,9,opt,name=deletionTimestamp"`
+	DeletionTimestamp *Time `json:"deletionTimestamp,omitempty" protobuf:"bytes,9,opt,name=deletionTimestamp"`
 
 	// Number of seconds allowed for this object to gracefully terminate before
 	// it will be removed from the system. Only set when deletionTimestamp is also set.
