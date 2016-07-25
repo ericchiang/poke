@@ -3,7 +3,6 @@ package server
 import (
 	"log"
 	"net/http"
-	"net/url"
 	"text/template"
 
 	"github.com/ericchiang/poke/storage"
@@ -19,16 +18,16 @@ var loginTmpl = template.Must(template.New("login-template").Parse(`<html>
 <body>
 <p>Login options</p>
 {{ range $i, $connector := .Connectors }}
-<a href="{{ $connector.URL }}?{{ $.URLQuery }}">{{ $connector.DisplayName }}</a>
+<a href="{{ $connector.URL }}?state={{ $.State }}">{{ $connector.DisplayName }}</a>
 {{ end }}
 </body>
 </html>`))
 
-func renderLoginOptions(w http.ResponseWriter, connectors []connectorInfo, query url.Values) {
+func renderLoginOptions(w http.ResponseWriter, connectors []connectorInfo, state string) {
 	data := struct {
 		Connectors []connectorInfo
-		URLQuery   string
-	}{connectors, query.Encode()}
+		State      string
+	}{connectors, state}
 	renderTemplate(w, loginTmpl, data)
 }
 

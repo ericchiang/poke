@@ -130,7 +130,7 @@ func (s *Server) handleAuthorization(w http.ResponseWriter, r *http.Request) {
 		i++
 	}
 
-	renderLoginOptions(w, connectorInfos, r.URL.Query())
+	renderLoginOptions(w, connectorInfos, state)
 }
 
 func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
@@ -144,10 +144,8 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 	// TODO(ericchiang): cache user identity.
 
 	state := r.FormValue("state")
-
 	switch r.Method {
 	case "GET":
-
 		switch conn := conn.Connector.(type) {
 		case connector.CallbackConnector:
 			callbackURL, err := conn.LoginURL(s.absURL("/callback", connID), state)
@@ -183,6 +181,15 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		groups, ok, err := s.groups(identity, state, conn.Connector)
+		if err != nil {
+			s.renderError(w, http.StatusInternalServerError, errServerError, "")
+			return
+		}
+		if ok {
+			identity.Groups = groups
+		}
+
 		s.redirectToApproval(w, r, identity, connID, state)
 	default:
 		s.notFound(w, r)
@@ -208,6 +215,14 @@ func (s *Server) handleConnectorCallback(w http.ResponseWriter, r *http.Request)
 		s.renderError(w, http.StatusInternalServerError, errServerError, "")
 		return
 	}
+	groups, ok, err := s.groups(identity, state, conn.Connector)
+	if err != nil {
+		s.renderError(w, http.StatusInternalServerError, errServerError, "")
+		return
+	}
+	if ok {
+		identity.Groups = groups
+	}
 	s.redirectToApproval(w, r, identity, connID, state)
 }
 
@@ -223,6 +238,31 @@ func (s *Server) redirectToApproval(w http.ResponseWriter, r *http.Request, iden
 		return
 	}
 	http.Redirect(w, r, path.Join(s.issuerURL.Path, "/approval")+"?state="+state, http.StatusSeeOther)
+}
+
+func (s *Server) groups(identity storage.Identity, authReqID string, conn connector.Connector) ([]string, bool, error) {
+	groupsConn, ok := conn.(connector.GroupsConnector)
+	if !ok {
+		return nil, false, nil
+	}
+	authReq, err := s.storage.GetAuthRequest(authReqID)
+	if err != nil {
+		log.Printf("get auth request: %v", err)
+		return nil, false, err
+	}
+	reqGroups := func() bool {
+		for _, scope := range authReq.Scopes {
+			if scope == scopeGroups {
+				return true
+			}
+		}
+		return false
+	}()
+	if !reqGroups {
+		return nil, false, nil
+	}
+	groups, err := groupsConn.Groups(identity)
+	return groups, true, err
 }
 
 func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/ericchiang/poke/connector"
+	"github.com/ericchiang/poke/connector/github"
 	"github.com/ericchiang/poke/connector/ldap"
 	"github.com/ericchiang/poke/connector/mock"
 	"github.com/ericchiang/poke/storage"
@@ -93,20 +94,33 @@ func (c *Connector) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	c.Name = connectorMetadata.Name
 	c.ID = connectorMetadata.ID
 
-	var config struct {
-		Config ConnectorConfig `yaml:"config"`
-	}
 	switch c.Type {
 	case "mock":
-		config.Config = &mock.Config{}
+		var config struct {
+			Config mock.Config `yaml:"config"`
+		}
+		if err := unmarshal(&config); err != nil {
+			return err
+		}
+		c.Config = &config.Config
 	case "ldap":
-		config.Config = &ldap.Config{}
+		var config struct {
+			Config ldap.Config `yaml:"config"`
+		}
+		if err := unmarshal(&config); err != nil {
+			return err
+		}
+		c.Config = &config.Config
+	case "github":
+		var config struct {
+			Config github.Config `yaml:"config"`
+		}
+		if err := unmarshal(&config); err != nil {
+			return err
+		}
+		c.Config = &config.Config
 	default:
 		return fmt.Errorf("unknown connector type %q", c.Type)
 	}
-	if err := unmarshal(config); err != nil {
-		return err
-	}
-	c.Config = config.Config
 	return nil
 }
