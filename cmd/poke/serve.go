@@ -92,7 +92,7 @@ func serve(cmd *cobra.Command, args []string) error {
 
 	serv, err := server.New(serverConfig)
 	if err != nil {
-		return fmt.Errorf("initializing server: %v")
+		return fmt.Errorf("initializing server: %v", err)
 	}
 	errc := make(chan error, 2)
 	if c.Web.HTTP != "" {

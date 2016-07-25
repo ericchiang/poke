@@ -103,7 +103,7 @@ func (c *githubConnector) HandleCallback(r *http.Request) (identity storage.Iden
 		if err != nil {
 			return identity, "", fmt.Errorf("github: read body: %v", err)
 		}
-		return identity, "", fmt.Errorf("%s: %s", resp.StatusCode, body)
+		return identity, "", fmt.Errorf("%s: %s", resp.Status, body)
 	}
 	var user struct {
 		Name  string `json:"name"`
@@ -151,7 +151,7 @@ func (c *githubConnector) Groups(identity storage.Identity) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("github: read body: %v", err)
 		}
-		return nil, fmt.Errorf("%s: %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("%s: %s", resp.Status, body)
 	}
 
 	// https://developer.github.com/v3/orgs/teams/#response-12
