@@ -94,11 +94,12 @@ func checkHTTPErr(r *http.Response, validStatusCodes ...int) error {
 		return fmt.Errorf("read response body: %v", err)
 	}
 
-	url := ""
+	var url, method string
 	if r.Request != nil {
+		method = r.Request.Method
 		url = r.Request.URL.String()
 	}
-	err = &httpErr{url, r.Status, body}
+	err = &httpErr{method, url, r.Status, body}
 	log.Printf("%s", err)
 
 	if r.StatusCode == http.StatusNotFound {
